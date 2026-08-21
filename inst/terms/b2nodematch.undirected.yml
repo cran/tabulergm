@@ -1,0 +1,20 @@
+title: Second-mode homophily
+description: >-
+  Counts the pairs of second-mode nodes that share an attribute value
+  and are both tied to the same first-mode node. The alpha and beta
+  discount parameters temper the count when nodes share many partners.
+citation:
+  - key: bomiriya2014
+    doi: 10.48550/arXiv.2312.05673
+plot:
+  edgelist: "0->2, 0->1, 0->3"
+  vcolor: [gray, orange, orange, gray]
+  ecolor: black
+  vshape: [square, circle, circle, circle]
+  vsize: [.5, 1.0, 1.0, .5]
+  elinetype: [1, 1, 2]
+  layout:
+    x: [0, 1, 1, 1]
+    y: [0, 0.5, 0, -0.5]
+math: |
+  \sum_{k\in B_1} \sum_{i<j \in B_2} \mathbf{1}(x_i = x_j) y_{ik} y_{jk}

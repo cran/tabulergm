@@ -1,0 +1,14 @@
+title: Absolute attribute difference
+description: >-
+  Sums the absolute difference in a quantitative attribute across the
+  ends of each directed tie. Negative estimates indicate homophily.
+plot:
+  edgelist: "0->1"
+  vcolor: [orange, orange]
+  vsize: [1.0, .5]
+  ecolor: black
+  layout:
+    x: [0, 1]
+    y: [0, 0]
+math: |
+  \sum_{i \neq j} y_{ij} \left|x_i - x_j\right|

@@ -1,0 +1,182 @@
+---
+title: "Fitting an ERGM and Viewing the Output with tabulergm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Fitting an ERGM and Viewing the Output with tabulergm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse  = TRUE,
+  comment   = "#>"
+)
+```
+
+## Overview
+
+This vignette demonstrates how to:
+
+1. Fit an ERGM using the **ergm** package.
+2. Produce a publication-ready Markdown table with `tabulergm_table(format = "markdown")`.
+3. Render the table inline in a Quarto or R Markdown document using `results: asis`.
+4. Replace the shipped term titles, descriptions, and citations for a single
+   table.
+5. Interactively preview the table in the RStudio viewer (or a browser) with
+   `tabulergm_view()`.
+
+## Setup
+
+```{r load-packages, message = FALSE, warning = FALSE}
+library(ergm)
+library(tabulergm)
+```
+
+## Fitting the model
+
+We use the Florentine marriage network, which ships with **ergm**, and fit a
+simple model with an `edges` term and a `nodematch` term for wealth quartile.
+
+```{r fit-model, message = FALSE, warning = FALSE}
+data(florentine)
+
+model <- ergm(
+  flomarriage ~ edges + nodematch("wealth"),
+  control = control.ergm(seed = 42)
+)
+summary(model)
+```
+
+## Creating a Markdown table
+
+Calling `tabulergm_table()` with `format = "markdown"` returns a
+`knitr_kable` object.  Adding the chunk option `results: asis` (or
+`results = "asis"` in R Markdown) causes knitr to emit the table verbatim,
+so the Markdown renderer (Quarto, Pandoc, GitHub, etc.) formats it properly.
+
+Math notation in the **math** column is automatically wrapped in `$...$` so
+that Pandoc can render it reliably in table cells across output formats,
+including Word. Network figures in the **figure** column are emitted with
+Markdown image syntax.
+
+> **Quarto tip:** use `#| results: asis` (or `results = "asis"` in R Markdown)
+> on the chunk so that knitr emits the table verbatim instead of quoting it.
+
+```{r markdown-table, results = "asis"}
+tabulergm_table(
+  model,
+  include_math        = TRUE,
+  include_description = TRUE,
+  format              = "markdown"
+)
+```
+
+## Customizing titles, descriptions, and citations
+
+Each term carries a short `title` and a plain-language `description`, taken
+from `tabulergm`'s term dictionary and falling back to the `ergm` term
+database for terms the dictionary does not cover. Add the `title` column with
+`include_title = TRUE`, and replace either field for a single table with the
+`override.*` arguments:
+
+```{r overrides, results = "asis"}
+tabulergm_table(
+  model,
+  include_title       = TRUE,
+  include_description = TRUE,
+  override.title      = c(edges = "Density"),
+  override.desc       = c(edges = "Baseline propensity to form ties."),
+  format              = "markdown"
+)
+```
+
+`override.math`, `override.figure`, and `override.citation` work the same way,
+and the single `override` argument sets several fields at once:
+
+```{r overrides-bulk, eval = FALSE}
+tabulergm_table(
+  model,
+  override = list(
+    edges     = list(title = "Density", desc = "Baseline tie propensity."),
+    nodematch = list(citation = "doi:10.1146/annurev.soc.27.1.415")
+  )
+)
+```
+
+Override names are matched against the term name first and the coefficient
+name second, so an expanded coefficient such as `nodematch.wealth.3` can be
+targeted on its own.
+
+Terms with a citation show a `(key)` marker next to their description, and the
+matching `[key] identifier` line is appended below the table. Citations are
+stored as a DOI, arXiv id, PubMed id, or URL rather than a formatted
+reference, so readers can import them into their own bibliography software:
+
+```{r citations, results = "asis"}
+tabulergm_table(
+  flomarriage ~ gwesp(0.5, fixed = TRUE) + gwdegree(0.5, fixed = TRUE),
+  format = "markdown"
+)
+```
+
+## Inspecting a formula without a fitted model
+
+You can also pass a bare formula to inspect term metadata before fitting:
+
+```{r formula-table, results = "asis"}
+tabulergm_table(
+  flomarriage ~ edges + nodematch("wealth") + triangle,
+  format = "markdown"
+)
+```
+
+## The term dictionary
+
+`tabulergm` ships math and network drawings for commonly used ERGM terms,
+including directed variants and mode-specific bipartite terms (`b1*` terms
+summarize the first mode, and `b2*` terms summarize the second mode).
+The table below covers every term currently included in the dictionary;
+terms with both directed and undirected definitions (`edges`, `gwesp`,
+`gwdsp`) display the undirected version:
+
+```{r term-dictionary, results = "asis"}
+dictionary_terms <- network ~
+  edges + mutual + triangle +
+  gwesp(0.5, fixed = TRUE) + gwdsp(0.5, fixed = TRUE) +
+  gwdegree(0.5, fixed = TRUE) + altkstar(2, fixed = TRUE) +
+  nodematch("attr") + nodefactor("attr") + nodemix("attr") +
+  nodecov("attr") + absdiff("attr") + edgecov("cov") +
+  transitiveties + cyclicalties +
+  nodeicov("attr") + nodeocov("attr") +
+  gwb1dsp(0.5, fixed = TRUE) + gwb2dsp(0.5, fixed = TRUE) +
+  b1factor("type") + b2factor("group") +
+  b1nodematch("type") + b2nodematch("group") +
+  b1starmix(2, "type") + b2starmix(2, "group")
+
+tabulergm_table(dictionary_terms, format = "markdown")
+```
+
+```{r term-coverage, include = FALSE}
+# Fails the render if a term in inst/terms/ is missing from the table above
+yml_terms <- unique(
+  sub(
+    "\\.(un)?directed\\.yml$", "",
+    list.files(system.file("terms", package = "tabulergm"))
+  )
+)
+stopifnot(all(yml_terms %in% parse_ergm_formula(dictionary_terms)$term))
+```
+
+## Interactive preview with `tabulergm_view()`
+
+During an interactive session you can call `tabulergm_view()` to open the
+table in the RStudio viewer pane or the system browser:
+
+```{r view-demo, eval = FALSE}
+tabulergm_view(model, include_math = TRUE, include_description = TRUE)
+```
+
+`tabulergm_view()` builds a self-contained HTML page that loads MathJax from
+a CDN, so LaTeX math and embedded network figures render immediately without
+any additional setup.

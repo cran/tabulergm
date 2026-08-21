@@ -1,0 +1,506 @@
+# ---- Edgelist parsing --------------------------------------------------------
+
+# .parse_plot_edgelist parses a simple edge
+edges <- tabulergm:::.parse_plot_edgelist("0->1")
+expect_equal(nrow(edges), 1L)
+expect_equal(unname(edges[1L, "from"]), "0")
+expect_equal(unname(edges[1L, "to"]), "1")
+
+# .parse_plot_edgelist parses a 3-cycle
+edges <- tabulergm:::.parse_plot_edgelist("0->1->2->0")
+expect_equal(nrow(edges), 3L)
+expect_equal(edges[, "from"], c("0", "1", "2"))
+expect_equal(edges[, "to"],   c("1", "2", "0"))
+
+# .parse_plot_edgelist errors on a single node
+expect_error(tabulergm:::.parse_plot_edgelist("0"))
+
+# .parse_plot_edgelist trims whitespace
+edges <- tabulergm:::.parse_plot_edgelist(" 0 -> 1 -> 2 ")
+expect_equal(nrow(edges), 2L)
+expect_equal(edges[, "from"], c("0", "1"))
+expect_equal(edges[, "to"],   c("1", "2"))
+
+# .parse_plot_edgelist supports comma-separated segments
+edges <- tabulergm:::.parse_plot_edgelist("0->1, 2->1")
+expect_equal(nrow(edges), 2L)
+expect_equal(edges[, "from"], c("0", "2"))
+expect_equal(edges[, "to"],   c("1", "1"))
+
+# .parse_plot_edgelist handles mixed chains and commas
+edges <- tabulergm:::.parse_plot_edgelist("0->1->2, 3->4")
+expect_equal(nrow(edges), 3L)
+expect_equal(edges[, "from"], c("0", "1", "3"))
+expect_equal(edges[, "to"],   c("1", "2", "4"))
+
+
+# ---- YAML file lookup --------------------------------------------------------
+
+# Test known terms via for-loop
+yml_test_cases <- list(
+  list(term = "edges",    directed = FALSE, pattern = "edges\\.undirected\\.yml$"),
+  list(term = "edges",    directed = TRUE,  pattern = "edges\\.directed\\.yml$"),
+  list(term = "edges",    directed = NULL,  pattern = "edges\\.undirected\\.yml$"),
+  list(term = "mutual",   directed = TRUE,  pattern = "mutual\\.directed\\.yml$"),
+  list(term = "mutual",   directed = NULL,  pattern = "mutual\\.directed\\.yml$"),
+  list(term = "triangle", directed = FALSE, pattern = "triangle\\.undirected\\.yml$"),
+  list(term = "gwb1dsp", directed = FALSE, pattern = "gwb1dsp\\.undirected\\.yml$"),
+  list(term = "gwb2dsp", directed = FALSE, pattern = "gwb2dsp\\.undirected\\.yml$"),
+  list(term = "b1factor", directed = FALSE, pattern = "b1factor\\.undirected\\.yml$"),
+  list(term = "b2factor", directed = FALSE, pattern = "b2factor\\.undirected\\.yml$"),
+  list(term = "b1nodematch", directed = FALSE, pattern = "b1nodematch\\.undirected\\.yml$"),
+  list(term = "b2nodematch", directed = FALSE, pattern = "b2nodematch\\.undirected\\.yml$"),
+  list(term = "b1starmix", directed = FALSE, pattern = "b1starmix\\.undirected\\.yml$"),
+  list(term = "b2starmix", directed = FALSE, pattern = "b2starmix\\.undirected\\.yml$"),
+  list(term = "gwesp", directed = FALSE, pattern = "gwesp\\.undirected\\.yml$"),
+  list(term = "gwesp", directed = TRUE,  pattern = "gwesp\\.directed\\.yml$"),
+  list(term = "gwdsp", directed = FALSE, pattern = "gwdsp\\.undirected\\.yml$"),
+  list(term = "gwdsp", directed = TRUE,  pattern = "gwdsp\\.directed\\.yml$"),
+  list(term = "gwdegree", directed = FALSE, pattern = "gwdegree\\.undirected\\.yml$"),
+  list(term = "altkstar", directed = FALSE, pattern = "altkstar\\.undirected\\.yml$"),
+  list(term = "nodefactor", directed = FALSE, pattern = "nodefactor\\.undirected\\.yml$"),
+  list(term = "nodefactor", directed = TRUE,  pattern = "nodefactor\\.directed\\.yml$"),
+  list(term = "nodecov", directed = FALSE, pattern = "nodecov\\.undirected\\.yml$"),
+  list(term = "nodecov", directed = TRUE,  pattern = "nodecov\\.directed\\.yml$"),
+  list(term = "absdiff", directed = FALSE, pattern = "absdiff\\.undirected\\.yml$"),
+  list(term = "absdiff", directed = TRUE,  pattern = "absdiff\\.directed\\.yml$"),
+  list(term = "nodemix", directed = FALSE, pattern = "nodemix\\.undirected\\.yml$"),
+  list(term = "nodemix", directed = TRUE,  pattern = "nodemix\\.directed\\.yml$"),
+  list(term = "edgecov", directed = FALSE, pattern = "edgecov\\.undirected\\.yml$"),
+  list(term = "edgecov", directed = TRUE,  pattern = "edgecov\\.directed\\.yml$"),
+  list(term = "nodematch", directed = FALSE, pattern = "nodematch\\.undirected\\.yml$"),
+  list(term = "nodematch", directed = TRUE,  pattern = "nodematch\\.directed\\.yml$"),
+  list(term = "triangle", directed = TRUE,  pattern = "triangle\\.directed\\.yml$"),
+  list(term = "transitiveties", directed = TRUE, pattern = "transitiveties\\.directed\\.yml$"),
+  list(term = "cyclicalties", directed = TRUE, pattern = "cyclicalties\\.directed\\.yml$"),
+  list(term = "nodeicov", directed = TRUE, pattern = "nodeicov\\.directed\\.yml$"),
+  list(term = "nodeocov", directed = TRUE, pattern = "nodeocov\\.directed\\.yml$")
+)
+
+for (tc in yml_test_cases) {
+  path <- tabulergm:::.find_term_yml(tc$term, directed = tc$directed)
+  expect_true(!is.null(path),
+    info = sprintf("YAML found for %s (directed=%s)", tc$term,
+                   deparse(tc$directed)))
+  expect_true(grepl(tc$pattern, path),
+    info = sprintf("Pattern matches for %s (directed=%s)", tc$term,
+                   deparse(tc$directed)))
+}
+
+# .find_term_yml returns NULL for missing terms
+path <- tabulergm:::.find_term_yml("nonexistent_term_xyz", directed = FALSE)
+expect_null(path)
+
+# .find_term_yml strips offset() wrapper
+path <- tabulergm:::.find_term_yml("offset(edges)", directed = FALSE)
+expect_true(!is.null(path))
+expect_true(grepl("edges\\.undirected\\.yml$", path))
+
+
+# ---- YAML data reading ------------------------------------------------------
+
+# .get_term_yml_data returns math from YAML
+data <- tabulergm:::.get_term_yml_data("edges", directed = FALSE)
+expect_false(is.na(data$math))
+expect_true(grepl("sum", data$math))
+
+# .get_term_yml_data returns NA for unknown terms
+data <- tabulergm:::.get_term_yml_data("nonexistent_term_xyz", directed = FALSE)
+expect_true(is.na(data$math))
+expect_true(is.na(data$figure))
+
+# .get_term_yml_data reads nodematch math
+data <- tabulergm:::.get_term_yml_data("nodematch", directed = FALSE)
+expect_false(is.na(data$math))
+expect_true(grepl("x_i = x_j", data$math))
+
+# .get_term_yml_data reads triangle math
+data <- tabulergm:::.get_term_yml_data("triangle", directed = FALSE)
+expect_false(is.na(data$math))
+
+# .get_term_yml_data reads bipartite term math
+for (term in c("gwb1dsp", "gwb2dsp", "b1factor", "b2factor",
+               "b1nodematch", "b2nodematch", "b1starmix", "b2starmix")) {
+  data <- tabulergm:::.get_term_yml_data(term, directed = FALSE)
+  expect_false(is.na(data$math),
+    info = sprintf("math found for %s", term))
+  expect_false(is.na(data$figure),
+    info = sprintf("figure found for %s", term))
+}
+
+# .get_term_yml_data reads undirected key term math and figures
+for (term in c("gwesp", "gwdsp", "gwdegree", "altkstar", "nodefactor",
+               "nodecov", "absdiff", "nodemix", "edgecov")) {
+  data <- tabulergm:::.get_term_yml_data(term, directed = FALSE)
+  expect_false(is.na(data$math),
+    info = sprintf("math found for %s (undirected)", term))
+  expect_false(is.na(data$figure),
+    info = sprintf("figure found for %s (undirected)", term))
+}
+
+# .get_term_yml_data reads directed key term math and figures
+for (term in c("gwesp", "gwdsp", "transitiveties", "cyclicalties",
+               "nodeicov", "nodeocov", "nodematch", "absdiff", "nodecov",
+               "nodefactor", "nodemix", "edgecov", "triangle")) {
+  data <- tabulergm:::.get_term_yml_data(term, directed = TRUE)
+  expect_false(is.na(data$math),
+    info = sprintf("math found for %s (directed)", term))
+  expect_false(is.na(data$figure),
+    info = sprintf("figure found for %s (directed)", term))
+}
+
+
+# ---- Drawing-convention notes ------------------------------------------------
+
+# Structural terms produce no notes
+notes <- tabulergm:::.term_drawing_notes(c("edges", "triangle"))
+expect_equal(length(notes), 0L)
+
+# Attribute terms produce the orange note
+notes <- tabulergm:::.term_drawing_notes(c("edges", "nodematch"))
+expect_equal(length(notes), 1L)
+expect_true(grepl("Orange nodes", notes))
+
+# Mixing terms produce the orange/teal note (and no plain orange note)
+notes <- tabulergm:::.term_drawing_notes(c("edges", "nodemix"))
+expect_equal(length(notes), 1L)
+expect_true(grepl("Orange and teal", notes))
+
+# Attribute + mixing terms produce both color notes
+notes <- tabulergm:::.term_drawing_notes(c("nodematch", "nodemix"))
+expect_equal(length(notes), 2L)
+
+# Bipartite terms produce the square/circle note
+notes <- tabulergm:::.term_drawing_notes("b1factor")
+expect_true(any(grepl("Square nodes", notes)))
+expect_true(any(grepl("Orange nodes", notes)))
+
+# Unknown terms are skipped quietly
+notes <- tabulergm:::.term_drawing_notes(c("edges", NA, "no_such_term"))
+expect_equal(length(notes), 0L)
+
+
+# ---- Caching mechanism -------------------------------------------------------
+
+# .get_cached_figure draws and caches a figure
+yml_path <- tabulergm:::.find_term_yml("edges", directed = FALSE)
+# Use bool handlers to prevent YAML 1.1 coercion of 'y' key to TRUE
+yml_data <- yaml::read_yaml(yml_path, handlers = list(
+  "bool#yes" = function(x) x,
+  "bool#no"  = function(x) x
+))
+result <- tabulergm:::.get_cached_figure(
+  yml_path, yml_data$plot, directed = FALSE
+)
+expect_true(!is.na(result))
+expect_true(file.exists(result))
+
+# Calling again returns the cached path (same file)
+result2 <- tabulergm:::.get_cached_figure(
+  yml_path, yml_data$plot, directed = FALSE
+)
+expect_equal(result, result2)
+
+# Directedness is part of the cache key, even for the same YAML file
+result_directed <- tabulergm:::.get_cached_figure(
+  yml_path, yml_data$plot, directed = TRUE
+)
+expect_false(identical(result, result_directed))
+
+# Changing the plot function invalidates the cache: rendering the same
+# term with a custom plotfun must invoke it and produce a new cache entry
+local({
+  yml_path <- tabulergm:::.find_term_yml("edges", directed = FALSE)
+  yml_data <- yaml::read_yaml(yml_path, handlers = list(
+    "bool#yes" = function(x) x,
+    "bool#no"  = function(x) x
+  ))
+
+  default_fig <- tabulergm:::.get_cached_figure(
+    yml_path, yml_data$plot, directed = FALSE
+  )
+
+  called <- new.env(parent = emptyenv())
+  called$n <- 0L
+  custom <- function(netobj, layout, vcolor, ecolor, directed, ...) {
+    called$n <- called$n + 1L
+    invisible(NULL)
+  }
+  old <- tabulergm_set_plotfun(custom)
+  on.exit(tabulergm_set_plotfun(old), add = TRUE)
+
+  custom_fig <- tabulergm:::.get_cached_figure(
+    yml_path, yml_data$plot, directed = FALSE
+  )
+  expect_equal(called$n, 1L)
+  expect_false(identical(default_fig, custom_fig))
+
+  # Re-rendering with the same custom function hits its own cache
+  custom_fig2 <- tabulergm:::.get_cached_figure(
+    yml_path, yml_data$plot, directed = FALSE
+  )
+  expect_equal(called$n, 1L)
+  expect_equal(custom_fig, custom_fig2)
+
+  # Restoring the previous function starts a fresh cache generation,
+  # so the figure is redrawn rather than served from the custom entry
+  tabulergm_set_plotfun(old)
+  restored_fig <- tabulergm:::.get_cached_figure(
+    yml_path, yml_data$plot, directed = FALSE
+  )
+  expect_false(identical(restored_fig, custom_fig))
+  expect_true(file.exists(restored_fig))
+})
+
+
+# ---- Plotfun API -------------------------------------------------------------
+
+# tabulergm_get_plotfun returns the default by default
+pfun <- tabulergm_get_plotfun()
+expect_true(is.function(pfun))
+expect_identical(pfun, tabulergm_default_plotfun)
+
+# tabulergm_set_plotfun sets a custom function
+custom <- function(netobj, layout, vcolor, ecolor, directed, ...) NULL
+old <- tabulergm_set_plotfun(custom)
+expect_identical(tabulergm_get_plotfun(), custom)
+
+# tabulergm_set_plotfun returns the previous function
+expect_identical(old, tabulergm_default_plotfun)
+
+# Restore default
+tabulergm_set_plotfun(tabulergm_default_plotfun)
+expect_identical(tabulergm_get_plotfun(), tabulergm_default_plotfun)
+
+# tabulergm_set_plotfun errors on non-function
+expect_error(tabulergm_set_plotfun("not a function"))
+
+# .draw_term_figure preserves edge-specific line types when adding layout bounds
+local({
+  captured <- new.env(parent = emptyenv())
+  custom <- function(netobj, layout, vcolor, ecolor, directed,
+                     vshape, vrotation, vsize, elinetype, ...) {
+    captured$edge_count <- nrow(network::as.edgelist(netobj))
+    captured$elinetype <- elinetype
+    invisible(NULL)
+  }
+  old <- tabulergm_set_plotfun(custom)
+  on.exit(tabulergm_set_plotfun(old), add = TRUE)
+
+  outfile <- tempfile(fileext = ".png")
+  result <- tabulergm:::.draw_term_figure(
+    list(
+      edgelist = "0->2, 0->1, 0->3",
+      vcolor = c("orange", "orange", "orange", "gray"),
+      ecolor = "black",
+      vshape = c("square", "circle", "circle", "circle"),
+      vsize = c(1.0, 0.5, 0.5, 0.5),
+      elinetype = c(1, 1, 2),
+      layout = list(x = c(0, 1, 1, 1), y = c(0, 0.5, 0, -0.5))
+    ),
+    directed = FALSE,
+    outfile = outfile
+  )
+
+  expect_true(file.exists(result))
+  expect_equal(captured$edge_count, 4L)
+  expect_equal(captured$elinetype, c(1, 1, 2, 1))
+})
+
+# .draw_term_figure permutes per-edge attributes into netplot drawing order
+# (as.edgelist sorts by tail/head index, not YAML insertion order)
+local({
+  captured <- new.env(parent = emptyenv())
+  custom <- function(netobj, layout, vcolor, ecolor, directed,
+                     vshape, vrotation, vsize, elinetype, ...) {
+    captured$ecolor <- ecolor
+    invisible(NULL)
+  }
+  old <- tabulergm_set_plotfun(custom)
+  on.exit(tabulergm_set_plotfun(old), add = TRUE)
+
+  # Node order is (0, 2, 1): insertion edges are 0->1 = (1,3),
+  # 0->2 = (1,2), 2->1 = (2,3); drawing order sorts to (1,2), (1,3),
+  # (2,3), so black must move from position 1 to position 2.
+  outfile <- tempfile(fileext = ".png")
+  tabulergm:::.draw_term_figure(
+    list(
+      edgelist = "0->1, 0->2, 2->1",
+      vcolor = c("black", "gray", "black"),
+      ecolor = c("black", "gray", "gray"),
+      layout = list(x = c(0, .5, 1), y = c(0, 1, 0))
+    ),
+    directed = TRUE,
+    outfile = outfile
+  )
+
+  expect_equal(captured$ecolor, c("gray", "black", "gray", "transparent"))
+})
+
+
+# .draw_term_figure passes directedness through to the plot function via
+# both the `directed` argument and the network object itself, so plot
+# functions (e.g. netplot, which adds arrowheads only for directed
+# networks) can draw edges accordingly
+local({
+  captured <- new.env(parent = emptyenv())
+  custom <- function(netobj, layout, vcolor, ecolor, directed, ...) {
+    captured$directed_arg <- directed
+    captured$directed_net <- network::is.directed(netobj)
+    invisible(NULL)
+  }
+  old <- tabulergm_set_plotfun(custom)
+  on.exit(tabulergm_set_plotfun(old), add = TRUE)
+
+  spec <- list(edgelist = "0->1", vcolor = "black", ecolor = "black")
+
+  tabulergm:::.draw_term_figure(spec, directed = TRUE,
+                                outfile = tempfile(fileext = ".png"))
+  expect_true(captured$directed_arg)
+  expect_true(captured$directed_net)
+
+  tabulergm:::.draw_term_figure(spec, directed = FALSE,
+                                outfile = tempfile(fileext = ".png"))
+  expect_false(captured$directed_arg)
+  expect_false(captured$directed_net)
+})
+
+
+# ---- Integration with parse_ergm_formula -------------------------------------
+
+# parse_ergm_formula populates math from YAML for known terms
+f <- y ~ edges + triangle
+result <- parse_ergm_formula(f)
+# edges has a YAML definition, so math should not be NA
+expect_false(is.na(result$math[result$term == "edges"]))
+# triangle has a YAML definition
+expect_false(is.na(result$math[result$term == "triangle"]))
+
+# nodematch has YAML data
+f2 <- y ~ edges + nodematch("gender")
+result2 <- parse_ergm_formula(f2)
+expect_false(is.na(result2$math[result2$term == "nodematch"]))
+
+# gwesp now has a YAML definition
+f3 <- y ~ edges + gwesp(0.5, fixed = TRUE)
+result3 <- parse_ergm_formula(f3)
+expect_false(is.na(result3$math[result3$term == "edges"]))
+expect_false(is.na(result3$math[result3$term == "gwesp"]))
+
+# Unknown terms still have NA math
+f3b <- y ~ edges + kstar(2)
+result3b <- parse_ergm_formula(f3b)
+expect_false(is.na(result3b$math[result3b$term == "edges"]))
+# kstar has no YAML file, so math stays NA
+expect_true(is.na(result3b$math[result3b$term == "kstar"]))
+
+# Bipartite terms have YAML data
+f4 <- y ~ gwb1dsp(0.5, fixed = TRUE) + b1factor("type") + b2nodematch("group") +
+  b1starmix(2, "type") + b2starmix(2, "type")
+result4 <- parse_ergm_formula(f4)
+expect_false(is.na(result4$math[result4$term == "gwb1dsp"]))
+expect_false(is.na(result4$math[result4$term == "b1factor"]))
+expect_false(is.na(result4$math[result4$term == "b2nodematch"]))
+expect_false(is.na(result4$math[result4$term == "b1starmix"]))
+expect_false(is.na(result4$math[result4$term == "b2starmix"]))
+
+# Key covariate and structural terms have YAML data
+f5 <- y ~ gwdsp(0.5, fixed = TRUE) + gwdegree(0.5, fixed = TRUE) +
+  altkstar(2, fixed = TRUE) + nodefactor("race") + nodecov("age") +
+  absdiff("age") + nodemix("race") + edgecov("dist")
+result5 <- parse_ergm_formula(f5)
+for (term in c("gwdsp", "gwdegree", "altkstar", "nodefactor", "nodecov",
+               "absdiff", "nodemix", "edgecov")) {
+  expect_false(is.na(result5$math[result5$term == term]),
+    info = sprintf("formula math found for %s", term))
+}
+
+# Directed-only terms have YAML data
+f6 <- y ~ transitiveties + cyclicalties + nodeicov("age") + nodeocov("age")
+result6 <- parse_ergm_formula(f6)
+for (term in c("transitiveties", "cyclicalties", "nodeicov", "nodeocov")) {
+  expect_false(is.na(result6$math[result6$term == term]),
+    info = sprintf("formula math found for %s", term))
+}
+
+# Attribute and structural terms resolve on directed networks too
+nw_formula_attr <- network::network.initialize(5, directed = TRUE)
+f7 <- nw_formula_attr ~ nodematch("a") + absdiff("a") + nodecov("a") +
+  nodefactor("a") + nodemix("a") + edgecov("d") + triangle
+result7 <- parse_ergm_formula(f7)
+for (term in c("nodematch", "absdiff", "nodecov", "nodefactor",
+               "nodemix", "edgecov", "triangle")) {
+  expect_false(is.na(result7$math[result7$term == term]),
+    info = sprintf("formula math found for %s (directed)", term))
+  expect_false(is.na(result7$figure[result7$term == term]),
+    info = sprintf("formula figure found for %s (directed)", term))
+  expect_true(grepl("neq", result7$math[result7$term == term]),
+    info = sprintf("directed math (ordered pairs) used for %s", term))
+}
+
+# Explicit directedness selects the matching YAML variant
+res_directed <- parse_ergm_formula(y ~ edges, directed = TRUE)
+expect_true(grepl("neq", res_directed$math))
+res_undirected <- parse_ergm_formula(y ~ edges, directed = FALSE)
+expect_true(grepl("i<j", res_undirected$math))
+
+# Directedness is inferred from the network on the formula's LHS
+nw_formula_dir <- network::network.initialize(5, directed = TRUE)
+res_inferred <- parse_ergm_formula(nw_formula_dir ~ edges)
+expect_true(grepl("neq", res_inferred$math))
+
+nw_formula_undir <- network::network.initialize(5, directed = FALSE)
+res_inferred_u <- parse_ergm_formula(nw_formula_undir ~ edges)
+expect_true(grepl("i<j", res_inferred_u$math))
+
+
+# ---- Integration with parse_ergm_model (requires ergm) -----------------------
+
+if (requireNamespace("ergm", quietly = TRUE)) {
+
+  library(network)
+  library(ergm)
+
+  # parse_ergm_model populates math from YAML for known terms
+  nw <- network(10, directed = FALSE, density = 0.3)
+  suppressWarnings(fit <- ergm(nw ~ edges))
+  result <- parse_ergm_model(fit)
+  # edges has a YAML definition with undirected math
+  expect_false(is.na(result$math[result$term == "edges"]))
+  expect_true(grepl("i<j", result$math[result$term == "edges"]))
+
+  # Directed network uses directed YAML
+  nw_d <- network(10, directed = TRUE, density = 0.2)
+  suppressWarnings(fit_d <- ergm(nw_d ~ edges))
+  result_d <- parse_ergm_model(fit_d)
+  expect_false(is.na(result_d$math[result_d$term == "edges"]))
+  expect_true(grepl("neq", result_d$math[result_d$term == "edges"]))
+}
+
+
+# ---- Figure cache is not poisoned by a failed draw --------------------------
+
+# A plot function that errors must not leave a blank PNG behind for the cache
+# to serve on every later call in the session.
+local({
+  previous <- tabulergm_get_plotfun()
+  on.exit(tabulergm_set_plotfun(previous), add = TRUE)
+
+  attempts <- 0L
+  tabulergm_set_plotfun(function(...) {
+    attempts <<- attempts + 1L
+    if (attempts == 1L) stop("simulated drawing failure")
+    previous(...)
+  })
+
+  # First attempt fails and must not cache anything.
+  expect_error(parse_ergm_formula(~ edges, directed = FALSE))
+
+  # Second attempt, same cache key, must redraw a figure with actual content.
+  figure <- parse_ergm_formula(~ edges, directed = FALSE)$figure
+  expect_false(is.na(figure))
+  expect_true(file.exists(figure))
+  # A redraw actually happened rather than the blank first attempt being
+  # served from the cache.
+  expect_equal(attempts, 2L)
+})

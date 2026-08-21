@@ -1,0 +1,13 @@
+title: Attribute mixing
+description: >-
+  Counts the directed ties for every ordered pairing of sender and
+  receiver attribute values, reproducing the full mixing matrix.
+plot:
+  edgelist: "0->1"
+  vcolor: [orange, "#008080"]
+  ecolor: black
+  layout:
+    x: [0, 1]
+    y: [0, 0]
+math: |
+  \sum_{i \neq j} y_{ij} \mathbf{1}(x_i = k, x_j = l)

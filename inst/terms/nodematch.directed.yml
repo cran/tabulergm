@@ -1,0 +1,19 @@
+title: Uniform homophily
+description: >-
+  Counts the directed ties joining nodes that share the same value of a
+  categorical attribute. Setting diff = TRUE adds one statistic per
+  attribute value (differential homophily).
+citation:
+  - key: mcpherson2001
+    doi: 10.1146/annurev.soc.27.1.415
+plot:
+  edgelist: "0->1"
+  vcolor:
+    - orange
+    - orange
+  ecolor: black
+  layout:
+    x: [0, 1]
+    y: [0, 0]
+math: |
+  \sum_{i \neq j} y_{ij} \mathbf{1}(x_i = x_j)

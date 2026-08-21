@@ -1,0 +1,13 @@
+title: Attribute mixing
+description: >-
+  Counts the ties for every pairing of attribute values, reproducing the
+  full mixing matrix of a categorical attribute.
+plot:
+  edgelist: "0->1"
+  vcolor: [orange, "#008080"]
+  ecolor: black
+  layout:
+    x: [0, 1]
+    y: [0, 0]
+math: |
+  \sum_{i<j} y_{ij} \mathbf{1}(\{x_i, x_j\} = \{k, l\})

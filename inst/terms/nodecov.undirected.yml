@@ -1,0 +1,14 @@
+title: Main effect of a quantitative attribute
+description: >-
+  Sums a quantitative attribute over both ends of each tie, measuring
+  how strongly that attribute drives tie formation.
+plot:
+  edgelist: "0->1"
+  vcolor: [orange, orange]
+  vsize: [1.0, .6]
+  ecolor: black
+  layout:
+    x: [0, 1]
+    y: [0, 0]
+math: |
+  \sum_{i<j} y_{ij} (x_i + x_j)
