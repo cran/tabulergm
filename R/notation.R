@@ -23,6 +23,26 @@
 #' expression). No parser changes are needed for new terms: files are
 #' looked up by term name.
 #'
+#' @section Aliases:
+#' When two `ergm` term names share an implementation (e.g. `dgwesp` and
+#' `gwesp`), the second file can reuse the first with an `alias` entry
+#' instead of copying it. The target is the file of the same directedness,
+#' so `dgwesp.directed.yml` below reuses `gwesp.directed.yml`:
+#'
+#' \preformatted{alias: gwesp
+#' }
+#'
+#' Any other entry in an alias file overrides the target's. `plot` is
+#' merged field by field (so an alias can, say, recolor one vertex without
+#' repeating the whole drawing); every other entry replaces the target's
+#' entry of the same name:
+#'
+#' \preformatted{alias: gwesp
+#' title: Typed geometrically weighted edgewise shared partners
+#' plot:
+#'   ecolor: gray
+#' }
+#'
 #' @section Titles, descriptions, and citations:
 #' `title` is a short label, capitalized like a heading and without a
 #' trailing period (e.g. `Uniform homophily`). `description` is one to
@@ -44,11 +64,22 @@
 #'     doi: 10.1016/j.socnet.2006.08.005
 #' }
 #'
+#' Cite the paper that introduced the statistic in the ERGM/p* framework
+#' first (for example Wasserman and Pattison 1996 for `nodematch`); when two
+#' papers introduced a parameterization together, list both. After the
+#' origin, a term may carry at most one well-established substantive
+#' reference for the concept it measures (for example McPherson et al. 2001
+#' on homophily). A term with no identifiable ERGM origin stays uncited
+#' rather than borrowing a loosely related source.
+#'
 #' Accepted identifier fields are `doi`, `arxiv`, `pmid`, and `url`; an
 #' entry may also carry free-text `text`, which is the right choice when
 #' no stable identifier can be verified. \strong{Always resolve an
-#' identifier before committing it} (for a DOI, `https://doi.org/<id>`);
-#' an identifier that points at the wrong paper is worse than none.
+#' identifier before committing it} (for a DOI, `https://doi.org/<id>`)
+#' and check that its authors and year match the key; an identifier that
+#' points at the wrong paper is worse than none. Use the `arxiv` field (not
+#' an arXiv DOI) for preprints, and reuse the same key and identifier for a
+#' reference cited by several terms.
 #'
 #' `tabulergm_table()` renders a `(key)` marker next to the term's
 #' description and a matching `[key] identifier` line below the table. Users
@@ -73,7 +104,14 @@
 #'     \eqn{\exp(\tau) \sum_i [1 - (1 - e^{-\tau})^i] EP_i(y)}, where the
 #'     exponent is the summation index and \eqn{EP_i}, \eqn{DP_i}, and
 #'     \eqn{D_i} are the edgewise shared partner, dyadwise shared partner,
-#'     and degree counts.
+#'     and degree counts; directed and bipartite degree counts carry a
+#'     superscript naming what is counted, \eqn{D^{\mathrm{in}}_i},
+#'     \eqn{D^{\mathrm{out}}_i}, \eqn{D^{B_1}_i}, and \eqn{D^{B_2}_i}
+#'     (e.g. the number of first-mode nodes with degree \eqn{i}).
+#'   \item Degree-based terms write node degree as a sum of ties, e.g.
+#'     \eqn{\sum_{j \neq i} y_{ij}} (undirected) or
+#'     \eqn{\sum_{j \neq i} y_{ji}} (in-degree), and k-star counts as
+#'     binomial coefficients, \eqn{\binom{\cdot}{k}}.
 #'   \item Directed shared-partner terms carry the two-path type as a
 #'     superscript, e.g. \eqn{EP^{\mathrm{OTP}}_i}, because `ergm` counts
 #'     outgoing two-paths (\code{OTP}) by default and `gwesp`/`gwdsp` take a
@@ -88,9 +126,10 @@
 #' The `plot` entry supports `edgelist`, `vcolor`, `vshape`, `vsize`,
 #' `ecolor`, `elinetype`, and `layout` (with `x` and `y` coordinates).
 #' Edgelists are chains like `"0->1->2, 0->3"`: each consecutive pair is
-#' one edge. Per-vertex vectors follow the node order obtained from the
-#' parsed edgelist (unique node ids, all tail nodes first, then head
-#' nodes); render the figure to double-check the mapping.
+#' one edge; a lone node id (e.g. `"1->2, 0"`) adds an isolated node.
+#' Per-vertex vectors follow the node order obtained from the parsed
+#' edgelist (unique node ids, all tail nodes first, then head nodes, then
+#' isolated nodes); render the figure to double-check the mapping.
 #' \itemize{
 #'   \item \strong{Vertex color}: `black` marks the focal structure of a
 #'     term; `gray` marks non-focal context, both attribute-irrelevant

@@ -99,7 +99,7 @@ tabulergm_table(
   model,
   override = list(
     edges     = list(title = "Density", desc = "Baseline tie propensity."),
-    nodematch = list(citation = "doi:10.1146/annurev.soc.27.1.415")
+    nodematch = list(citation = "doi:10.1016/S0378-8733(01)00029-6")
   )
 )
 ```
@@ -120,6 +120,58 @@ tabulergm_table(
 )
 ```
 
+## Reorganizing a table with styles
+
+The default table uses one column per metadata component. For a compact
+dictionary-style layout, pipe a table through `with_style_name_over_formula()`.
+It places the curated title over the formula in a **Name** cell and puts the
+term drawing in **Representation**, while retaining model statistics and any
+columns explicitly requested from `tabulergm_table()`.
+
+```{r compact-style, results = "asis"}
+tabulergm_table(
+  flomarriage ~ edges + nodematch("wealth") + triangle,
+  include_description = FALSE,
+  format = "markdown"
+) |>
+  with_style_name_over_formula()
+```
+
+Styled Markdown is emitted as a raw HTML table because pipe tables cannot
+reliably hold the multi-line name/formula cells. This layout is therefore for
+HTML-capable Markdown targets; use the default plain style for portable pipe
+tables. `with_style_plain()` restores the original layout.
+
+The same styled data frame can be saved or previewed through a pipe:
+
+```{r compact-style-save, eval = FALSE}
+tabulergm_table(model, include_description = FALSE) |>
+  with_style_name_over_formula() |>
+  tabulergm_save("compact-ergm")
+
+tabulergm_table(model, include_description = FALSE) |>
+  with_style_name_over_formula() |>
+  tabulergm_view()
+```
+
+The compact LaTeX snippet requires the `array`, `booktabs`, and `graphicx`
+packages for multiline cells and figures. Fitted-model estimates, standard
+errors, and p-values display two decimal places by default; use `digits = NULL` to retain
+full precision or set another number of decimal places.
+
+Compact-style presentation settings are carried by the table object, so the
+same layout is used for previews and saved output. `column_widths` takes named
+fractions of the table width and `figure_height` is measured in inches:
+
+```{r compact-style-layout, eval = FALSE}
+tabulergm_table(model, include_description = FALSE) |>
+  with_style_name_over_formula(
+    column_widths = c(Name = .5, Representation = .2),
+    figure_height = .8
+  ) |>
+  tabulergm_save("compact-ergm")
+```
+
 ## Inspecting a formula without a fitted model
 
 You can also pass a bare formula to inspect term metadata before fitting:
@@ -138,7 +190,7 @@ including directed variants and mode-specific bipartite terms (`b1*` terms
 summarize the first mode, and `b2*` terms summarize the second mode).
 The table below covers every term currently included in the dictionary;
 terms with both directed and undirected definitions (`edges`, `gwesp`,
-`gwdsp`) display the undirected version:
+`gwdsp`, `isolates`) display the undirected version:
 
 ```{r term-dictionary, results = "asis"}
 dictionary_terms <- network ~
@@ -149,7 +201,13 @@ dictionary_terms <- network ~
   nodecov("attr") + absdiff("attr") + edgecov("cov") +
   transitiveties + cyclicalties +
   nodeicov("attr") + nodeocov("attr") +
+  gwidegree(0.5, fixed = TRUE) + gwodegree(0.5, fixed = TRUE) +
+  nodeifactor("attr") + nodeofactor("attr") +
+  kstar(2) + istar(2) + ostar(2) +
+  isolates + degree(1) + concurrent +
+  dgwesp(0.5, fixed = TRUE) + dgwdsp(0.5, fixed = TRUE) +
   gwb1dsp(0.5, fixed = TRUE) + gwb2dsp(0.5, fixed = TRUE) +
+  gwb1degree(0.5, fixed = TRUE) + gwb2degree(0.5, fixed = TRUE) +
   b1factor("type") + b2factor("group") +
   b1nodematch("type") + b2nodematch("group") +
   b1starmix(2, "type") + b2starmix(2, "group")

@@ -40,7 +40,7 @@ tabulergm_table(
 #   model,
 #   override = list(
 #     edges     = list(title = "Density", desc = "Baseline tie propensity."),
-#     nodematch = list(citation = "doi:10.1146/annurev.soc.27.1.415")
+#     nodematch = list(citation = "doi:10.1016/S0378-8733(01)00029-6")
 #   )
 # )
 
@@ -49,6 +49,31 @@ tabulergm_table(
   flomarriage ~ gwesp(0.5, fixed = TRUE) + gwdegree(0.5, fixed = TRUE),
   format = "markdown"
 )
+
+## ----compact-style, results = "asis"------------------------------------------
+tabulergm_table(
+  flomarriage ~ edges + nodematch("wealth") + triangle,
+  include_description = FALSE,
+  format = "markdown"
+) |>
+  with_style_name_over_formula()
+
+## ----compact-style-save, eval = FALSE-----------------------------------------
+# tabulergm_table(model, include_description = FALSE) |>
+#   with_style_name_over_formula() |>
+#   tabulergm_save("compact-ergm")
+# 
+# tabulergm_table(model, include_description = FALSE) |>
+#   with_style_name_over_formula() |>
+#   tabulergm_view()
+
+## ----compact-style-layout, eval = FALSE---------------------------------------
+# tabulergm_table(model, include_description = FALSE) |>
+#   with_style_name_over_formula(
+#     column_widths = c(Name = .5, Representation = .2),
+#     figure_height = .8
+#   ) |>
+#   tabulergm_save("compact-ergm")
 
 ## ----formula-table, results = "asis"------------------------------------------
 tabulergm_table(
@@ -65,7 +90,13 @@ dictionary_terms <- network ~
   nodecov("attr") + absdiff("attr") + edgecov("cov") +
   transitiveties + cyclicalties +
   nodeicov("attr") + nodeocov("attr") +
+  gwidegree(0.5, fixed = TRUE) + gwodegree(0.5, fixed = TRUE) +
+  nodeifactor("attr") + nodeofactor("attr") +
+  kstar(2) + istar(2) + ostar(2) +
+  isolates + degree(1) + concurrent +
+  dgwesp(0.5, fixed = TRUE) + dgwdsp(0.5, fixed = TRUE) +
   gwb1dsp(0.5, fixed = TRUE) + gwb2dsp(0.5, fixed = TRUE) +
+  gwb1degree(0.5, fixed = TRUE) + gwb2degree(0.5, fixed = TRUE) +
   b1factor("type") + b2factor("group") +
   b1nodematch("type") + b2nodematch("group") +
   b1starmix(2, "type") + b2starmix(2, "group")

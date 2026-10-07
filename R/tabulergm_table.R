@@ -8,7 +8,9 @@
 #'   [formula][stats::formula].
 #' @param ... Additional arguments passed to methods.
 #' @return A `data.frame` (default), or a `knitr_kable` object when
-#'   `format` is `"html"` or `"markdown"`. When the term figures use
+#'   `format` is `"html"` or `"markdown"`; these additionally inherit from
+#'   internal `tabulergm_table` and `tabulergm_kable` classes so styles can be
+#'   safely applied after rendering. When the term figures use
 #'   drawing conventions (orange for focal attributes, orange/teal for
 #'   mixing, squares/circles for bipartite modes), an explanatory note is
 #'   appended below `"html"` and `"markdown"` tables. Terms carrying a
@@ -26,7 +28,11 @@ tabulergm_table <- function(object, ...) {
 #' `term`, `figure`, `estimate`, `se`, and `pvalue`.
 #' Optional columns (`title`, `description`, `math`, `attribute`) can be
 #' included via logical arguments. The `title` column, when included, is
-#' placed immediately after `term`.
+#' placed immediately after `term`. Estimates and standard errors are rounded
+#' for display according to `digits`, and p-values are formatted as strings
+#' with the same number of decimal places, showing values below the display
+#' precision as an upper bound (e.g. `"<0.01"`). The attached table
+#' specification retains the full-precision values.
 #'
 #' @param include_description Logical. Include the term description column?
 #'   Default `FALSE`.
@@ -36,6 +42,11 @@ tabulergm_table <- function(object, ...) {
 #'   `FALSE`.
 #' @param include_title Logical. Include the short term-title column?
 #'   Default `FALSE`.
+#' @param digits Non-negative whole number of decimal places used to display
+#'   every numeric column of a fitted-model table (estimates, standard
+#'   errors, and p-values; p-values below `10^-digits` display as
+#'   `"<0.01"`-style bounds). Default `2`. Use `NULL` to
+#'   retain full precision. Parsed model data always retain full precision.
 #' @param format Character. Output format: `"data.frame"` (default),
 #'   `"html"`, or `"markdown"`. HTML and Markdown output require the
 #'   \pkg{knitr} package.
@@ -67,6 +78,7 @@ tabulergm_table.ergm <- function(
     include_math = FALSE,
     include_attribute = FALSE,
     include_title = FALSE,
+    digits = 2L,
     format = c("data.frame", "html", "markdown"),
     figures_dir = NULL,
     override = NULL,
@@ -103,20 +115,16 @@ tabulergm_table.ergm <- function(
   result <- parsed[, cols, drop = FALSE]
   rownames(result) <- NULL
 
-  marked <- .apply_citation_markers(result, parsed)
-
-  .format_output(
-    marked[["df"]], format,
-    figures_dir = figures_dir,
-    citations = marked[["citations"]]
-  )
+  .render_table_spec(.new_table_spec(
+    result, parsed, format = format, figures_dir = figures_dir, digits = digits
+  ))
 }
 
 #' @describeIn tabulergm_table Method for formula objects.
 #'
 #' Calls [parse_ergm_formula()] and returns a table with columns
-#' `term`, `figure`, `math`, and `description`. Coefficient statistics
-#' are excluded because no fitted model is available.
+#' `term`, `figure`, `math`, and, by default, `description`. Coefficient
+#' statistics are excluded because no fitted model is available.
 #'
 #' @param directed Logical or `NULL`. Whether the network is directed.
 #'   Passed to [parse_ergm_formula()]; when `NULL` (the default),
@@ -133,6 +141,7 @@ tabulergm_table.formula <- function(
     figures_dir = NULL,
     directed = NULL,
     include_title = FALSE,
+    include_description = TRUE,
     override = NULL,
     override.title = NULL,
     override.desc = NULL,
@@ -157,19 +166,15 @@ tabulergm_table.formula <- function(
   # Formula-only columns (no coefficient statistics)
   cols <- c(
     "term", if (include_title) "title",
-    "figure", "math", "description"
+    "figure", "math", if (include_description) "description"
   )
 
   result <- parsed[, cols, drop = FALSE]
   rownames(result) <- NULL
 
-  marked <- .apply_citation_markers(result, parsed)
-
-  .format_output(
-    marked[["df"]], format,
-    figures_dir = figures_dir,
-    citations = marked[["citations"]]
-  )
+  .render_table_spec(.new_table_spec(
+    result, parsed, format = format, figures_dir = figures_dir
+  ))
 }
 
 
@@ -247,16 +252,20 @@ tabulergm_table.formula <- function(
 #' @param figures_dir Optional figure asset directory for Markdown output.
 #' @param copy_figures Logical. Copy Markdown figures to `figures_dir` or the
 #'   active knitr figure path?
+#' @param terms Optional bare term names, one per row, used to name copied
+#'   figure files when the `term` column carries citation markers.
 #' @return A modified copy of `df`.
 #' @noRd
 .preprocess_columns <- function(
     df,
     format,
     figures_dir = NULL,
-    copy_figures = TRUE) {
+    copy_figures = TRUE,
+    terms = NULL) {
   if (format == "data.frame") return(df)
 
   figures_dir <- .validate_figures_dir(figures_dir)
+  df <- .escape_pvalue_html(df)
 
   # Math column: wrap non-NA values in display-math delimiters
   if ("math" %in% names(df)) {
@@ -282,7 +291,9 @@ tabulergm_table.formula <- function(
   # Figure column: convert file paths to <img> tags
   if ("figure" %in% names(df)) {
     if (format == "markdown" && isTRUE(copy_figures)) {
-      df <- .copy_markdown_figures(df, figures_dir = figures_dir)
+      df <- .copy_markdown_figures(df, figures_dir = figures_dir,
+        terms = terms
+      )
     }
 
     has_fig <- !is.na(df[["figure"]]) & nzchar(df[["figure"]])
@@ -323,6 +334,23 @@ tabulergm_table.formula <- function(
   x <- gsub("&", "&amp;", x, fixed = TRUE)
   x <- gsub("<", "&lt;", x, fixed = TRUE)
   gsub(">", "&gt;", x, fixed = TRUE)
+}
+
+
+#' Make TeX safe inside raw-HTML Markdown
+#'
+#' GitHub parses math delimiters inside raw HTML, but HTML entities within the
+#' expression are escaped a second time before they reach its math renderer.
+#' Express angle brackets as TeX commands so the raw HTML remains valid and the
+#' math renderer receives TeX rather than `&lt;` or `&gt;`.
+#'
+#' @param x A TeX math string.
+#' @return A TeX string without literal HTML angle brackets.
+#' @noRd
+.escape_math_raw_html_markdown <- function(x) {
+  backslash <- intToUtf8(92L)
+  x <- gsub("<", paste0(backslash, "lt{}"), x, fixed = TRUE)
+  gsub(">", paste0(backslash, "gt{}"), x, fixed = TRUE)
 }
 
 
@@ -403,9 +431,17 @@ tabulergm_table.formula <- function(
 #' @param df A data frame containing a `figure` column.
 #' @param figures_dir Optional user-specified output directory. When `NULL`,
 #'   the active knitr figure path is used during non-interactive rendering.
+#' @param terms Optional bare term names, one per row of `df`, used for the
+#'   copied file names instead of the displayed `term` column.
 #' @return A copy of `df` with `figure` paths rewritten when files are copied.
 #' @noRd
-.copy_markdown_figures <- function(df, figures_dir = NULL) {
+.copy_markdown_figures <- function(df, figures_dir = NULL, terms = NULL) {
+  # Normalized here as well as at specification time: this is the funnel
+  # every figure-copying route passes through, and an unnormalized Windows
+  # path reaching .manual_markdown_figure_target() resolves against the
+  # working directory (#35).
+  figures_dir <- .validate_figures_dir(figures_dir)
+
   figures <- as.character(df[["figure"]])
   has_figure <- !is.na(figures) & nzchar(figures) & file.exists(figures)
 
@@ -419,9 +455,12 @@ tabulergm_table.formula <- function(
   }
 
   unique_sources <- unique(figures[has_figure])
+  # File names come from the bare term names when given, so a citation
+  # marker appended to the displayed term never leaks into them
+  label_df <- if (is.null(terms)) df else data.frame(term = terms)
   destinations <- .build_markdown_figure_destinations(
     sources = unique_sources,
-    df = df,
+    df = label_df,
     figures = figures,
     target = target
   )
@@ -685,11 +724,15 @@ tabulergm_table.formula <- function(
 
 #' Test whether a path is absolute
 #'
+#' Windows paths may use either separator, so the path is normalized to
+#' forward slashes first. This also makes UNC paths (`\\server\share`)
+#' register as absolute.
+#'
 #' @param path Character path.
 #' @return Logical scalar.
 #' @noRd
 .is_absolute_path <- function(path) {
-  grepl("^(/|[A-Za-z]:/)", path)
+  grepl("^(/|[A-Za-z]:/)", .forward_slash_path(path))
 }
 
 
@@ -713,10 +756,12 @@ tabulergm_table.formula <- function(
 #'   object.
 #' @noRd
 .format_output <- function(df, format, figures_dir = NULL,
-                           citations = list()) {
+                           citations = list(), spec = NULL,
+                           display = NULL) {
   if (format == "data.frame") {
-    attr(df, "tabulergm_citations") <- citations
-    return(df)
+    return(.attach_table_spec(
+      df, spec, citations = citations, table_class = "tabulergm_table"
+    ))
   }
 
   if (!requireNamespace("knitr", quietly = TRUE)) {
@@ -729,6 +774,13 @@ tabulergm_table.formula <- function(
     )
   }
 
+  if (!is.null(spec) && identical(spec$style, "name_over_formula")) {
+    return(.format_name_over_formula(
+      display, requested_format = format, figures_dir = figures_dir,
+      citations = citations, spec = spec
+    ))
+  }
+
   notes <- if ("term" %in% names(df)) {
     .term_drawing_notes(df[["term"]])
   } else {
@@ -737,7 +789,9 @@ tabulergm_table.formula <- function(
 
   citation_notes <- .render_citation_notes(citations, format)
 
-  df <- .preprocess_columns(df, format, figures_dir = figures_dir)
+  df <- .preprocess_columns(df, format, figures_dir = figures_dir,
+    terms = display$terms
+  )
 
   knitr_format <- switch(format,
     html     = "html",
@@ -745,9 +799,9 @@ tabulergm_table.formula <- function(
   )
 
   out <- knitr::kable(df, format = knitr_format, row.names = FALSE,
-    escape = FALSE
+    escape = FALSE, align = .kable_align(df)
   )
-  .append_table_notes(out, notes, format, citation_notes)
+  .append_table_notes(out, notes, format, citation_notes, spec = spec)
 }
 
 
@@ -767,9 +821,9 @@ tabulergm_table.formula <- function(
 #' @return The `knitr_kable` object, with notes appended when present.
 #' @noRd
 .append_table_notes <- function(kable_obj, notes, format,
-                                citation_notes = character(0)) {
+                                citation_notes = character(0), spec = NULL) {
   if (length(notes) == 0L && length(citation_notes) == 0L) {
-    return(kable_obj)
+    return(.attach_table_spec(kable_obj, spec, table_class = "tabulergm_kable"))
   }
 
   lines <- as.character(kable_obj)
@@ -796,7 +850,8 @@ tabulergm_table.formula <- function(
     }
   }
 
-  structure(lines, format = attr(kable_obj, "format"), class = "knitr_kable")
+  out <- structure(lines, format = attr(kable_obj, "format"), class = "knitr_kable")
+  .attach_table_spec(out, spec, table_class = "tabulergm_kable")
 }
 
 #' Render note lines as a single italic Markdown block
@@ -824,8 +879,8 @@ tabulergm_table.formula <- function(
 #' (with MathJax for LaTeX math rendering) and opens it in the RStudio
 #' viewer pane when available, falling back to [utils::browseURL()].
 #'
-#' @param object A fitted [ergm][ergm::ergm] object or an ERGM
-#'   [formula][stats::formula].
+#' @param object A fitted [ergm][ergm::ergm] object, an ERGM
+#'   [formula][stats::formula], or a table returned by [tabulergm_table()].
 #' @param ... Additional arguments passed to [tabulergm_table()].
 #' @return Invisibly returns the path to the temporary HTML file.
 #' @export
@@ -853,6 +908,24 @@ tabulergm_view.ergm <- function(object, ...) {
 tabulergm_view.formula <- function(object, ...) {
   tbl <- tabulergm_table(object, format = "html", ...)
   .open_html_viewer(tbl)
+}
+
+#' @describeIn tabulergm_view Method for table data frames returned by
+#'   [tabulergm_table()].
+#' @export
+tabulergm_view.tabulergm_table <- function(object, ...) {
+  spec <- .table_spec_from(object)
+  spec$format <- "html"
+  .open_html_viewer(.render_table_spec(spec))
+}
+
+#' @describeIn tabulergm_view Method for formatted tables returned by
+#'   [tabulergm_table()].
+#' @export
+tabulergm_view.tabulergm_kable <- function(object, ...) {
+  spec <- .table_spec_from(object)
+  spec$format <- "html"
+  .open_html_viewer(.render_table_spec(spec))
 }
 
 

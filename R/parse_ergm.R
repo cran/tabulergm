@@ -34,8 +34,8 @@
 #' @param override.citation A named list keyed by term name whose elements
 #'   are citation specifications in the same form the YAML `citation:`
 #'   field accepts: a bare key (`"hunter2007"`), a prefixed identifier
-#'   (`"doi:10.1016/j.socnet.2006.08.002"`), a single entry list
-#'   (`list(key = "hunter2007", doi = "10.1016/j.socnet.2006.08.002")`), or
+#'   (`"doi:10.1016/j.socnet.2006.08.005"`), a single entry list
+#'   (`list(key = "hunter2007", doi = "10.1016/j.socnet.2006.08.005")`), or
 #'   a list of such entries.
 #' @return A data frame with columns:
 #' \describe{
@@ -90,9 +90,21 @@ parse_ergm_model <- function(
   f <- object[["formula"]]
   terms_info <- .parse_formula_terms(f)
 
-  # Coefficient table from model summary
-  s <- summary(object)
-  coef_table <- s[["coefficients"]]
+  # Coefficient table. Computed directly rather than via summary(), which
+  # warns once per ergm minor release for every fit recorded by an earlier
+  # version ("This object was fit with 'ergm' version ... or earlier").
+  # This mirrors the coefficient block of ergm's summary.ergm() (see
+  # ergm/R/summary.ergm.R): vcov() defaults to sources = "all", which is
+  # what summary()'s total.variation = TRUE selects.
+  estimate   <- stats::coef(object)
+  std_error  <- sqrt(diag(stats::vcov(object)))
+  z_value    <- estimate / std_error
+  coef_table <- cbind(
+    Estimate     = estimate,
+    `Std. Error` = std_error,
+    `Pr(>|z|)`   = 2 * stats::pnorm(abs(z_value), lower.tail = FALSE)
+  )
+  rownames(coef_table) <- ergm::param_names(object)
   coef_names <- rownames(coef_table)
 
   # Robustly extract columns by partial name matching
@@ -176,10 +188,12 @@ parse_ergm_model <- function(
 #'
 #' # Attach a citation to a term that has none in the term dictionary
 #' parse_ergm_formula(
-#'   ~ edges + kstar(2),
+#'   ~ edges + concurrent,
 #'   directed = FALSE,
 #'   override.citation = list(
-#'     kstar = list(key = "frank1986", doi = "10.1080/0022250X.1986.9990013")
+#'     concurrent = list(
+#'       key = "morris1997", doi = "10.1097/00002030-199705000-00012"
+#'     )
 #'   )
 #' )
 parse_ergm_formula <- function(
@@ -364,7 +378,7 @@ parse_ergm_formula <- function(
 # ---- Internal Helpers: Coefficient Extraction ----
 
 #' Extract a column from the coefficient matrix by partial name matching
-#' @param coef_table A coefficient matrix (from `summary(ergm_object)`).
+#' @param coef_table A coefficient matrix (see `parse_ergm_model()`).
 #' @param pattern A pattern to match against column names.
 #' @return A numeric vector, or `NA`s if the column is not found.
 #' @noRd

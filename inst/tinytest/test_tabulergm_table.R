@@ -63,11 +63,20 @@ if (requireNamespace("knitr", quietly = TRUE)) {
   expect_false(grepl("Square nodes", md_str, fixed = TRUE),
     info = "no bipartite note for one-mode tables")
 
-  # Mixing terms add the orange/teal note
-  md <- tabulergm_table(y ~ edges + nodemix("g"), format = "markdown")
+  # Mixing terms add the orange/teal note, alongside the orange note when an
+  # attribute term is also present; terms without a drawing add nothing
+  md <- tabulergm_table(y ~ edges + nodemix("g") + twopath,
+    format = "markdown")
   md_str <- paste(as.character(md), collapse = "\n")
   expect_true(grepl("Orange and teal nodes", md_str, fixed = TRUE),
     info = "orange/teal note for mixing terms")
+  expect_false(grepl("*Note: Orange nodes", md_str, fixed = TRUE),
+    info = "no plain orange note for mixing-only tables")
+  md <- tabulergm_table(y ~ nodematch("g") + nodemix("g"), format = "markdown")
+  md_str <- paste(as.character(md), collapse = "\n")
+  expect_true(grepl("Orange nodes", md_str, fixed = TRUE) &&
+    grepl("Orange and teal nodes", md_str, fixed = TRUE),
+    info = "attribute and mixing terms get both color notes")
 
   # Bipartite terms add the square/circle note
   md <- tabulergm_table(y ~ edges + b1factor("g"), format = "markdown")
@@ -109,10 +118,58 @@ if (requireNamespace("network", quietly = TRUE) &&
   result <- tabulergm_table(fit)
   expect_inherits(result, "data.frame")
   expect_equal(names(result), c("term", "figure", "estimate", "se", "pvalue"))
-  expect_equal(result$term, "edges")
+  expect_equal(result$term, "edges (holland1981)")
   expect_true(is.numeric(result$estimate))
   expect_true(is.numeric(result$se))
-  expect_true(is.numeric(result$pvalue))
+  expect_true(is.character(result$pvalue))
+
+  parsed <- parse_ergm_model(fit)
+  result_spec <- attr(result, "tabulergm_spec", exact = TRUE)
+  expect_equal(result_spec$data$estimate, parsed$estimate,
+    info = "the table specification retains full-precision estimates"
+  )
+  expect_equal(result_spec$data$se, parsed$se,
+    info = "the table specification retains full-precision standard errors"
+  )
+  expect_equal(result$estimate, round(parsed$estimate, 2),
+    info = "default table estimates use two decimal places"
+  )
+  expect_equal(result$se, round(parsed$se, 2),
+    info = "default table standard errors use two decimal places"
+  )
+  expect_equal(result$pvalue, sprintf("%.2f", parsed$pvalue),
+    info = "default table p-values use two decimal places"
+  )
+
+  result_zero <- tabulergm_table(fit, digits = 0)
+  expect_equal(result_zero$estimate, round(parsed$estimate, 0))
+  expect_equal(result_zero$se, round(parsed$se, 0))
+
+  result_full <- tabulergm_table(fit, digits = NULL)
+  expect_equal(result_full$estimate, parsed$estimate)
+  expect_equal(result_full$se, parsed$se)
+  expect_equal(result_full$pvalue, parsed$pvalue)
+  expect_null(attr(result_full, "tabulergm_spec", exact = TRUE)$digits)
+
+  # p-values below the display precision show as a bound, never as zero, in
+  # the returned table and in the rendered Markdown and LaTeX
+  fit_small_p <- readRDS(
+    system.file("fits", "fit_nodemix.rds", package = "tabulergm")
+  )
+  expect_true(parse_ergm_model(fit_small_p)$pvalue[1] < 0.001)
+  expect_equal(tabulergm_table(fit_small_p)$pvalue,
+    c("<0.01", "0.67", "0.11", "0.15"))
+  expect_equal(tabulergm_table(fit_small_p, digits = 3)$pvalue[1], "<0.001")
+  md <- paste(tabulergm_table(fit_small_p, format = "markdown"),
+    collapse = "\n")
+  expect_true(grepl("| &lt;0.01|", md, fixed = TRUE))
+  saved_p <- tabulergm_save(fit_small_p, tempfile("tabulergm-pvalue-"),
+    format = "latex")
+  tex <- paste(readLines(saved_p$files[["latex"]]), collapse = "\n")
+  expect_true(grepl("\\textless{}0.01", tex, fixed = TRUE))
+
+  expect_error(tabulergm_table(fit, digits = -1), "digits")
+  expect_error(tabulergm_table(fit, digits = 1.5), "digits")
 
   # Optional columns included when requested
   result_desc <- tabulergm_table(fit, include_description = TRUE)
@@ -205,33 +262,32 @@ if (requireNamespace("network", quietly = TRUE) &&
 
     # ---- markdown figures can be copied to a user folder ------------------
 
+    # A relative figures_dir resolves against the working directory, and the
+    # copied files are named after the bare term, even when the term column
+    # carries a citation marker (no description column shown)
     local({
-      src <- tempfile(fileext = ".png")
-      writeLines("fake image content", src)
       out_dir <- tempfile("tabulergm-figures-")
       dir.create(out_dir)
-
       old_wd <- setwd(out_dir)
       on.exit(setwd(old_wd), add = TRUE)
 
-      df <- data.frame(
-        term = "Custom Term",
-        figure = src,
-        stringsAsFactors = FALSE
-      )
-      processed <- tabulergm:::.preprocess_columns(
-        df,
-        "markdown",
-        figures_dir = "assets"
-      )
-
-      expect_true(file.exists(file.path(out_dir, "assets", "custom-term.png")),
+      md <- paste(as.character(tabulergm_table(
+        ~ edges + triangle, directed = FALSE, include_description = FALSE,
+        format = "markdown", figures_dir = "assets"
+      )), collapse = "\n")
+      expect_true(grepl("triangle (frank1986)", md, fixed = TRUE))
+      expect_equal(sort(list.files("assets")), c("edges.png", "triangle.png"),
         info = "manual figures_dir copies markdown figures")
-      expect_true(grepl('![](assets/custom-term.png){width=80px}',
-        processed$figure,
-        fixed = TRUE
-      ), info = "manual figures_dir rewrites markdown figure path")
+      expect_true(grepl("![](assets/edges.png){width=80px}", md, fixed = TRUE),
+        info = "manual figures_dir rewrites markdown figure path")
     })
+
+    # An invalid figures_dir is reported when the table is built (#35), not
+    # deferred until something renders Markdown.
+    expect_error(
+      tabulergm_table(~ edges, directed = FALSE, figures_dir = 42),
+      "figures_dir"
+    )
 
     # ---- markdown figures use the active knitr figure path ----------------
 
@@ -241,8 +297,6 @@ if (requireNamespace("network", quietly = TRUE) &&
       on.exit(knitr::opts_knit$set(old_knit), add = TRUE)
       on.exit(knitr::opts_current$set(old_current), add = TRUE)
 
-      src <- tempfile(fileext = ".png")
-      writeLines("fake image content", src)
       out_dir <- tempfile("tabulergm-knitr-figures-")
       dir.create(out_dir)
 
@@ -250,41 +304,31 @@ if (requireNamespace("network", quietly = TRUE) &&
         output.dir = out_dir,
         rmarkdown.pandoc.to = "gfm"
       )
+
+      # A fig.path prefix is prepended to the file name ...
       knitr::opts_current$set(fig.path = "man/figures/README-")
-
-      df <- data.frame(
-        term = "Edges",
-        figure = src,
-        stringsAsFactors = FALSE
-      )
-      processed <- tabulergm:::.preprocess_columns(df, "markdown")
-
+      md <- paste(as.character(
+        tabulergm_table(~ edges, directed = FALSE, format = "markdown")
+      ), collapse = "\n")
       expect_true(file.exists(file.path(out_dir, "man", "figures",
         "README-edges.png"
       )), info = "knitr fig.path prefix receives markdown figures")
-      expect_true(grepl('![](man/figures/README-edges.png){width=80px}',
-        processed$figure,
-        fixed = TRUE
+      expect_true(grepl("![](man/figures/README-edges.png){width=80px}",
+        md, fixed = TRUE
       ), info = "knitr fig.path prefix rewrites markdown figure path")
 
+      # ... and a fig.path directory holds it, without a doubled slash
       knitr::opts_current$set(fig.path = "README_files/figure-gfm/")
-      src_dir <- tempfile(fileext = ".png")
-      writeLines("fake image content", src_dir)
-      df_dir <- data.frame(
-        term = "Triangle",
-        figure = src_dir,
-        stringsAsFactors = FALSE
-      )
-      processed_dir <- tabulergm:::.preprocess_columns(df_dir, "markdown")
-
+      md <- paste(as.character(
+        tabulergm_table(~ triangle, directed = FALSE, format = "markdown")
+      ), collapse = "\n")
       expect_true(file.exists(file.path(out_dir, "README_files",
         "figure-gfm", "triangle.png"
       )), info = "knitr fig.path directory receives markdown figures")
-      expect_true(grepl('![](README_files/figure-gfm/triangle.png){width=80px}',
-        processed_dir$figure,
-        fixed = TRUE
+      expect_true(grepl("![](README_files/figure-gfm/triangle.png){width=80px}",
+        md, fixed = TRUE
       ), info = "knitr fig.path directory rewrites markdown figure path")
-      expect_false(grepl("//", processed_dir$figure, fixed = TRUE),
+      expect_false(grepl("figure-gfm//", md, fixed = TRUE),
         info = "knitr fig.path directory does not emit a double slash")
     })
 

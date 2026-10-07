@@ -14,6 +14,7 @@ tabulergm_table(object, ...)
   include_math = FALSE,
   include_attribute = FALSE,
   include_title = FALSE,
+  digits = 2L,
   format = c("data.frame", "html", "markdown"),
   figures_dir = NULL,
   override = NULL,
@@ -31,6 +32,7 @@ tabulergm_table(object, ...)
   figures_dir = NULL,
   directed = NULL,
   include_title = FALSE,
+  include_description = TRUE,
   override = NULL,
   override.title = NULL,
   override.desc = NULL,
@@ -58,6 +60,12 @@ Default \code{FALSE}.}
 \item{include_title}{Logical. Include the short term-title column?
 Default \code{FALSE}.}
 
+\item{digits}{Non-negative whole number of decimal places used to display
+every numeric column of a fitted-model table (estimates, standard
+errors, and p-values; p-values below \code{10^-digits} display as
+\code{"<0.01"}-style bounds). Default \code{2}. Use \code{NULL} to
+retain full precision. Parsed model data always retain full precision.}
+
 \item{format}{Character. Output format: \code{"data.frame"} (default),
 \code{"html"}, or \code{"markdown"}. HTML and Markdown output require the
 \pkg{knitr} package.}
@@ -81,8 +89,8 @@ character vectors keyed by term name, e.g.
 \item{override.citation}{A named list keyed by term name whose elements
 are citation specifications in the same form the YAML \verb{citation:}
 field accepts: a bare key (\code{"hunter2007"}), a prefixed identifier
-(\code{"doi:10.1016/j.socnet.2006.08.002"}), a single entry list
-(\code{list(key = "hunter2007", doi = "10.1016/j.socnet.2006.08.002")}), or
+(\code{"doi:10.1016/j.socnet.2006.08.005"}), a single entry list
+(\code{list(key = "hunter2007", doi = "10.1016/j.socnet.2006.08.005")}), or
 a list of such entries.}
 
 \item{directed}{Logical or \code{NULL}. Whether the network is directed.
@@ -92,7 +100,9 @@ the formula when possible.}
 }
 \value{
 A \code{data.frame} (default), or a \code{knitr_kable} object when
-\code{format} is \code{"html"} or \code{"markdown"}. When the term figures use
+\code{format} is \code{"html"} or \code{"markdown"}; these additionally inherit from
+internal \code{tabulergm_table} and \code{tabulergm_kable} classes so styles can be
+safely applied after rendering. When the term figures use
 drawing conventions (orange for focal attributes, orange/teal for
 mixing, squares/circles for bipartite modes), an explanatory note is
 appended below \code{"html"} and \code{"markdown"} tables. Terms carrying a
@@ -112,13 +122,17 @@ Calls \code{\link[=parse_ergm_model]{parse_ergm_model()}} and returns a table wi
 \code{term}, \code{figure}, \code{estimate}, \code{se}, and \code{pvalue}.
 Optional columns (\code{title}, \code{description}, \code{math}, \code{attribute}) can be
 included via logical arguments. The \code{title} column, when included, is
-placed immediately after \code{term}.
+placed immediately after \code{term}. Estimates and standard errors are rounded
+for display according to \code{digits}, and p-values are formatted as strings
+with the same number of decimal places, showing values below the display
+precision as an upper bound (e.g. \code{"<0.01"}). The attached table
+specification retains the full-precision values.
 
 \item \code{tabulergm_table(formula)}: Method for formula objects.
 
 Calls \code{\link[=parse_ergm_formula]{parse_ergm_formula()}} and returns a table with columns
-\code{term}, \code{figure}, \code{math}, and \code{description}. Coefficient statistics
-are excluded because no fitted model is available.
+\code{term}, \code{figure}, \code{math}, and, by default, \code{description}. Coefficient
+statistics are excluded because no fitted model is available.
 
 }}
 \examples{
